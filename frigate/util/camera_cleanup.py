@@ -3,6 +3,7 @@
 import glob
 import logging
 import os
+import re
 import shutil
 
 from frigate.const import CLIPS_DIR, RECORD_DIR, THUMB_DIR
@@ -18,6 +19,27 @@ from frigate.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Event and review ids are "<timestamp>-<6 random characters>", such as
+# "1700000000.123456-abc123". Camera names may contain "-", so a glob on
+# "front-*" alone would also match the files of a camera named "front-door".
+_MEDIA_ID = r"\d+(?:\.\d+)?-[a-z0-9]{6}"
+
+
+def _camera_media_files(
+    directory: str, camera_name: str, prefix: str = "", suffix: str = ""
+) -> list[str]:
+    """Files named {prefix}{camera_name}-{id}{suffix} in directory, and no others."""
+    name = re.compile(
+        re.escape(f"{prefix}{camera_name}-") + _MEDIA_ID + re.escape(suffix) + r"\Z"
+    )
+    return [
+        path
+        for path in glob.glob(
+            os.path.join(directory, f"{prefix}{camera_name}-*{suffix}")
+        )
+        if name.match(os.path.basename(path))
+    ]
 
 
 def cleanup_camera_db(
@@ -127,27 +149,27 @@ def cleanup_camera_files(
                 logger.error("Failed to remove %s: %s", dir_path, e)
 
     # Remove event snapshot files
-    for snapshot in glob.glob(os.path.join(CLIPS_DIR, f"{camera_name}-*.jpg")):
+    for snapshot in _camera_media_files(CLIPS_DIR, camera_name, suffix=".jpg"):
         try:
             os.remove(snapshot)
         except Exception as e:
             logger.error("Failed to remove snapshot %s: %s", snapshot, e)
 
-    for snapshot in glob.glob(os.path.join(CLIPS_DIR, f"{camera_name}-*-clean.webp")):
+    for snapshot in _camera_media_files(CLIPS_DIR, camera_name, suffix="-clean.webp"):
         try:
             os.remove(snapshot)
         except Exception as e:
             logger.error("Failed to remove snapshot %s: %s", snapshot, e)
 
-    for snapshot in glob.glob(os.path.join(CLIPS_DIR, f"{camera_name}-*-clean.png")):
+    for snapshot in _camera_media_files(CLIPS_DIR, camera_name, suffix="-clean.png"):
         try:
             os.remove(snapshot)
         except Exception as e:
             logger.error("Failed to remove snapshot %s: %s", snapshot, e)
 
     # Remove review thumbnail files
-    for thumb in glob.glob(
-        os.path.join(CLIPS_DIR, "review", f"thumb-{camera_name}-*.webp")
+    for thumb in _camera_media_files(
+        os.path.join(CLIPS_DIR, "review"), camera_name, prefix="thumb-", suffix=".webp"
     ):
         try:
             os.remove(thumb)
